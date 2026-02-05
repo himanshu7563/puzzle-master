@@ -90,24 +90,23 @@
                 if(!apiKey) { alert("Pehle Settings mein API Key dalein!"); setGameState('settings'); return; }
                 setIsAiLoading(true); setGameState('scanning');
                 try {
-                    // NEW PROMPT: Strictly separates Question Text from Hints
-                    const promptText = `Analyze this reasoning puzzle. 
-                    1. Extract the FULL RAW QUESTION TEXT (exactly as written). Put this in 'puzzle_text'.
-                    2. Generate 3-4 SMART HINTS (deductive steps, NOT the full solution). Put these in 'hints'.
-                    3. Extract solution and structure.
+                    // NEW STRICT PROMPT
+                    const promptText = `You are a strict exam puzzle formatter.
+                    1. 'puzzle_text': Extract the COMPLETE original question text EXACTLY as given. Do NOT summarize. This is what the user reads to solve the puzzle.
+                    2. 'hints': Create 3-4 deductive logical clues (e.g., "If A>B and B>C, A must be > C"). Do NOT copy the full question text here.
+                    3. Extract structure for names, fields, options, solution.
                     
                     Return strictly JSON format:
                     {
                         "title": "Short Title",
-                        "puzzle_text": "Full original question text goes here...",
+                        "puzzle_text": "FULL QUESTION TEXT HERE...",
                         "names": ["Name1", "Name2"],
                         "fields": ["City", "Bank"],
                         "options": {"City": ["X","Y"], "Bank": ["A", "B"]}, 
-                        "hints": ["Hint: Since A is not X, try...", "Hint: Look at statement 2..."], 
+                        "hints": ["Deduction 1", "Deduction 2"], 
                         "solution": {"Name1": {"City": "X", "Bank": "A"}}, 
-                        "explanation": "Detailed guide"
-                    }
-                    Important: 'hints' array must NOT contain the question text. It should contain logic clues only.`;
+                        "explanation": "Solution guide"
+                    }`;
 
                     const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
                         method: 'POST',
@@ -173,7 +172,7 @@
                 const ans = activeCase === 1 ? userAnswers.case1 : userAnswers.case2;
                 return (
                     <div className="flex flex-col h-[100dvh] bg-[#050505] overflow-hidden">
-                        {/* 1. COMPACT HEADER */}
+                        {/* 1. HEADER */}
                         <div className="bg-[#111] border-b border-white/10 px-4 py-3 shrink-0 z-20">
                             <div className="flex justify-between items-center mb-2">
                                 <button onClick={() => setGameState('menu')} className="text-slate-400"><Icons.Back /></button>
@@ -193,7 +192,7 @@
                         {/* 2. MAIN CONTENT */}
                         <div className="flex-1 overflow-y-auto p-4 pb-32">
                             
-                            {/* HINTS POPUP (Overlay) */}
+                            {/* HINTS POPUP */}
                             {showHints && (
                                 <div className="mb-4 bg-yellow-900/20 border border-yellow-500/30 rounded-2xl p-4 animate-fade-in">
                                     <h4 className="text-yellow-500 text-[10px] font-black uppercase tracking-widest mb-2">Smart Clues</h4>
@@ -206,10 +205,10 @@
                             )}
 
                             {viewMode === 'question' ? (
-                                /* QUESTION VIEW */
+                                /* QUESTION VIEW - RAW TEXT */
                                 <div className="bg-[#151515] border border-white/10 rounded-2xl p-5 shadow-lg">
                                     <h2 className="text-lg font-bold text-white mb-4 leading-tight">{levelData.title}</h2>
-                                    <p className="text-sm text-slate-300 leading-7 whitespace-pre-wrap font-medium">{levelData.puzzle_text || "No text available. Check image scan."}</p>
+                                    <p className="text-sm text-slate-300 leading-7 whitespace-pre-wrap font-medium">{levelData.puzzle_text || "Puzzle text not found. Please try rescanning."}</p>
                                 </div>
                             ) : (
                                 /* GRID VIEW */
@@ -317,7 +316,7 @@
                     <div className="flex-1 overflow-y-auto space-y-3 pb-10 custom-scrollbar">
                         {library.slice().reverse().map(l => (
                             <div key={l.id} onClick={() => startLevel(l.data)} className="bg-[#111] border border-white/10 p-5 rounded-2xl active:scale-95 transition-transform flex justify-between items-center">
-                                <div><span className="text-[10px] text-blue-500 font-bold uppercase">LVL {l.level}</span><h3 className="font-bold text-white text-sm line-clamp-1">{l.title}</h3></div>
+                                <div><span className="text-[10px] text-blue-500 font-bold uppercase">Level {l.level}</span><h3 className="font-bold text-white text-sm line-clamp-1">{l.title}</h3></div>
                                 <button onClick={e => {e.stopPropagation(); if(confirm("Delete?")) {const f=library.filter(x=>x.id!==l.id); setLibrary(f); localStorage.setItem('puzzleVault',JSON.stringify(f));}}} className="p-2 text-slate-600 hover:text-red-500"><Icons.Trash/></button>
                             </div>
                         ))}
