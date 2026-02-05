@@ -50,7 +50,8 @@
             Bulb: (p) => <Icon {...p}><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 12 2a4.65 4.65 0 0 0-4.5 9.5c.76.76 1.23 1.52 1.41 2.5"/></Icon>,
             Trash: (p) => <Icon {...p}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></Icon>,
             File: (p) => <Icon {...p}><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></Icon>,
-            Grid: (p) => <Icon {...p}><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></Icon>
+            Grid: (p) => <Icon {...p}><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></Icon>,
+            Ban: (p) => <Icon {...p}><circle cx="12" cy="12" r="10"/><line x1="4.93" x2="19.07" y1="4.93" y2="19.07"/></Icon>
         };
 
         const App = () => {
@@ -63,10 +64,19 @@
             const [showHints, setShowHints] = useState(false);
             const [viewMode, setViewMode] = useState('question'); 
             
+            // New: Elimination Mode State inside Drawer
+            const [eliminationMode, setEliminationMode] = useState(false);
+
             const [apiKey, setApiKey] = useState('');
             const [library, setLibrary] = useState([]);
             const [levelData, setLevelData] = useState(null);
+            
+            // Answers: Stores confirmed selections
             const [userAnswers, setUserAnswers] = useState({ case1: {}, case2: {} });
+            
+            // Rejections: Stores options marked as "Impossible" (Red)
+            const [userRejections, setUserRejections] = useState({ case1: {}, case2: {} });
+            
             const [aiExplanation, setAiExplanation] = useState('');
             
             const fileInputRef = useRef(null);
@@ -119,8 +129,20 @@
             };
 
             const startLevel = (d) => {
-                const empty = {}; d.names.forEach(n => { empty[n] = {}; d.fields.forEach(f => empty[n][f] = ''); });
-                setUserAnswers({ case1: JSON.parse(JSON.stringify(empty)), case2: JSON.parse(JSON.stringify(empty)) });
+                const emptyAns = {};
+                const emptyRej = {};
+                d.names.forEach(n => { 
+                    emptyAns[n] = {}; 
+                    emptyRej[n] = {};
+                    d.fields.forEach(f => {
+                        emptyAns[n][f] = '';
+                        emptyRej[n][f] = []; // Array of rejected strings
+                    }); 
+                });
+                
+                setUserAnswers({ case1: JSON.parse(JSON.stringify(emptyAns)), case2: JSON.parse(JSON.stringify(emptyAns)) });
+                setUserRejections({ case1: JSON.parse(JSON.stringify(emptyRej)), case2: JSON.parse(JSON.stringify(emptyRej)) });
+                
                 setLevelData(d); setAiExplanation(d.explanation); 
                 setTimeLeft(420); // 7 Mins
                 setShowHints(false);
@@ -136,37 +158,69 @@
 
             if(timeLeft === 0 && gameState === 'playing') setGameState('lost');
 
-            const handleSelect = (v) => {
+            // --- HANDLING SELECTION & REJECTION ---
+            const handleInteraction = (val) => {
                 const c = activeCase === 1 ? 'case1' : 'case2';
-                setUserAnswers(p => ({ ...p, [c]: { ...p[c], [activeCell.name]: { ...p[c][activeCell.name], [activeCell.field]: v } } }));
-                setActiveCell(null);
+                const { name, field } = activeCell;
+
+                if (eliminationMode) {
+                    // Toggle Rejection
+                    setUserRejections(prev => {
+                        const currentRejections = prev[c][name][field] || [];
+                        const newRejections = currentRejections.includes(val) 
+                            ? currentRejections.filter(item => item !== val) // Un-reject
+                            : [...currentRejections, val]; // Reject
+                        
+                        // If we reject something that was selected, unselect it
+                        if (userAnswers[c][name][field] === val) {
+                            setUserAnswers(ans => ({ ...ans, [c]: { ...ans[c], [name]: { ...ans[c][name], [field]: '' } } }));
+                        }
+
+                        return { ...prev, [c]: { ...prev[c], [name]: { ...prev[c][name], [field]: newRejections } } };
+                    });
+                } else {
+                    // Assign Value (Green)
+                    setUserAnswers(prev => ({ 
+                        ...prev, 
+                        [c]: { 
+                            ...prev[c], 
+                            [name]: { ...prev[c][name], [field]: val } 
+                        } 
+                    }));
+                    
+                    // If assigning, remove from rejected list if present
+                    setUserRejections(prev => ({
+                        ...prev,
+                        [c]: { ...prev[c], [name]: { ...prev[c][name], [field]: prev[c][name][field].filter(item => item !== val) } }
+                    }));
+                    
+                    setActiveCell(null); // Close drawer on selection
+                }
+            };
+
+            const clearSelection = () => {
+                const c = activeCase === 1 ? 'case1' : 'case2';
+                const { name, field } = activeCell;
+                setUserAnswers(prev => ({ ...prev, [c]: { ...prev[c], [name]: { ...prev[c][name], [field]: '' } } }));
             };
 
             const check = () => {
                 const ans = activeCase === 1 ? userAnswers.case1 : userAnswers.case2;
                 let ok = true;
+                let incomplete = false;
+
                 levelData.names.forEach(n => {
-                    levelData.fields.forEach(f => { if(ans[n][f] !== levelData.solution[n][f]) ok = false; });
+                    levelData.fields.forEach(f => { 
+                        if (!ans[n][f]) incomplete = true;
+                        if (ans[n][f] !== levelData.solution[n][f]) ok = false; 
+                    });
                 });
-                if(ok) setGameState('won'); else alert("Galat hai! Hint le lo.");
-            };
 
-            // --- SMART OPTION LOGIC ---
-            const getOptionStatus = (optionValue) => {
-                const currentCaseKey = activeCase === 1 ? 'case1' : 'case2';
-                const currentAnswers = userAnswers[currentCaseKey];
-                const fieldName = activeCell.field;
-
-                // 1. Is this option selected by the CURRENT person?
-                if (currentAnswers[activeCell.name][fieldName] === optionValue) return 'selected';
-
-                // 2. Is this option selected by ANYONE ELSE?
-                const isTaken = levelData.names.some(name => 
-                    name !== activeCell.name && currentAnswers[name][fieldName] === optionValue
-                );
-
-                if (isTaken) return 'taken';
-                return 'available';
+                if (incomplete || !ok) {
+                    setGameState('lost'); // Direct Defeat Screen
+                } else {
+                    setGameState('won'); // Direct Victory Screen
+                }
             };
 
             // --- UI SCREENS ---
@@ -174,7 +228,7 @@
                 <div className="flex h-[100dvh] flex-col items-center justify-center bg-[#050505] p-6">
                     <button onClick={() => setGameState('settings')} className="fixed top-6 right-6 p-3 bg-white/10 rounded-full text-slate-400"><Icons.Settings /></button>
                     <h1 className="text-6xl font-black italic tracking-tighter mb-2 text-white">LOGIC.AI</h1>
-                    <p className="text-slate-500 text-xs font-bold uppercase tracking-[0.3em] mb-12">Exam Prep Mode</p>
+                    <p className="text-slate-500 text-xs font-bold uppercase tracking-[0.3em] mb-12">Pro Exam Prep</p>
                     <div className="w-full max-w-xs space-y-3">
                         <button onClick={() => setGameState('input_text')} className="w-full bg-white text-black p-5 rounded-2xl font-bold active:scale-95 transition-transform shadow-lg">PASTE QUESTION</button>
                         <button onClick={() => fileInputRef.current.click()} className="w-full bg-blue-600 text-white p-5 rounded-2xl font-bold active:scale-95 transition-transform shadow-lg">SCAN BOOK</button>
@@ -264,49 +318,47 @@
                         {activeCell && (
                             <div className="fixed inset-0 z-50 flex items-end bg-black/80 backdrop-blur-sm animate-fade-in" onClick={()=>setActiveCell(null)}>
                                 <div className="w-full bg-[#151515] rounded-t-[2rem] p-6 pb-10 border-t border-white/10 animate-slide-up" onClick={e=>e.stopPropagation()}>
-                                    <div className="w-12 h-1 bg-white/10 rounded-full mx-auto mb-6"></div>
-                                    <div className="flex justify-between items-end mb-6">
+                                    <div className="w-12 h-1 bg-white/10 rounded-full mx-auto mb-4"></div>
+                                    <div className="flex justify-between items-center mb-6">
                                         <div>
-                                            <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-1">Set {activeCell.field}</p>
-                                            <h3 className="text-2xl font-bold text-white">{activeCell.name}</h3>
+                                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Set {activeCell.field}</p>
+                                            <h3 className="text-xl font-bold text-white">{activeCell.name}</h3>
                                         </div>
-                                        <button onClick={()=>setActiveCell(null)} className="p-2 bg-white/5 rounded-full text-slate-400"><Icons.Close/></button>
+                                        <button 
+                                            onClick={() => setEliminationMode(!eliminationMode)}
+                                            className={`px-4 py-2 rounded-full text-xs font-bold flex items-center gap-2 transition-all ${eliminationMode ? 'bg-red-500 text-white' : 'bg-green-600 text-white'}`}
+                                        >
+                                            {eliminationMode ? <><Icons.Ban size={14}/> ELIMINATE</> : <><Icons.Check size={14}/> ASSIGN</>}
+                                        </button>
                                     </div>
                                     
-                                    {/* --- UPDATED DRAWER GRID --- */}
                                     <div className="grid grid-cols-2 gap-3 max-h-[40vh] overflow-y-auto custom-scrollbar">
                                         {levelData.options[activeCell.field].map(opt => {
-                                            const status = getOptionStatus(opt);
-                                            let btnClass = "p-4 rounded-xl text-xs font-bold border transition-all ";
+                                            const c = activeCase === 1 ? 'case1' : 'case2';
+                                            const isSelected = userAnswers[c][activeCell.name][activeCell.field] === opt;
+                                            const isRejected = userRejections[c][activeCell.name][activeCell.field]?.includes(opt);
                                             
-                                            // Conditional Styling
-                                            if (status === 'selected') {
-                                                // Currently Selected by YOU -> White
-                                                btnClass += "bg-white text-black border-white";
-                                            } else if (status === 'taken') {
-                                                // Taken by someone else -> Red, Disabled
-                                                btnClass += "bg-red-900/20 text-red-500 border-red-500/30 opacity-50 cursor-not-allowed";
+                                            // Determine Style
+                                            let btnStyle = "p-4 rounded-xl text-xs font-bold border transition-all ";
+                                            if (isRejected) {
+                                                btnStyle += "bg-red-900/10 border-red-500/30 text-red-500 opacity-60 line-through decoration-2";
+                                            } else if (isSelected) {
+                                                btnStyle += "bg-white text-black border-white shadow-[0_0_15px_rgba(255,255,255,0.3)]";
                                             } else {
-                                                // Available -> Green
-                                                btnClass += "bg-green-900/10 text-green-400 border-green-500/30 hover:bg-green-900/20";
+                                                btnStyle += "bg-[#1a1a1a] border-white/5 text-slate-400";
                                             }
 
                                             return (
                                                 <button 
                                                     key={opt} 
-                                                    onClick={() => status !== 'taken' && handleSelect(opt)}
-                                                    disabled={status === 'taken'}
-                                                    className={btnClass}
+                                                    onClick={() => handleInteraction(opt)}
+                                                    className={btnStyle}
                                                 >
                                                     {opt}
                                                 </button>
                                             );
                                         })}
-                                        
-                                        {/* Clear Button */}
-                                        <button onClick={()=>handleSelect('')} className="col-span-2 p-3 rounded-xl text-[10px] font-bold border border-white/10 text-slate-400 bg-white/5 mt-2">
-                                            CLEAR SELECTION
-                                        </button>
+                                        <button onClick={clearSelection} className="col-span-2 p-3 rounded-xl text-[10px] font-bold border border-white/10 text-slate-400 bg-white/5 mt-2">RESET SELECTION</button>
                                     </div>
                                 </div>
                             </div>
@@ -315,7 +367,7 @@
                 );
             }
 
-            // SIMPLIFIED SCREENS (Keeping full code structure intact)
+            // SIMPLIFIED SCREENS
             if (gameState === 'settings') return (
                 <div className="flex h-[100dvh] flex-col items-center justify-center bg-[#050505] p-6">
                     <div className="w-full max-w-xs">
@@ -360,7 +412,8 @@
 
             if (gameState === 'won' || gameState === 'lost') return (
                 <div className="flex h-[100dvh] flex-col items-center justify-center bg-[#050505] p-10 text-center">
-                    <h2 className={`text-6xl font-black italic mb-4 ${gameState==='won'?'text-white':'text-red-500'}`}>{gameState==='won'?'SOLVED!':'FAILED!'}</h2>
+                    <h2 className={`text-6xl font-black italic mb-4 ${gameState==='won'?'text-white':'text-red-500'}`}>{gameState==='won'?'VICTORY!':'DEFEAT'}</h2>
+                    <p className="text-slate-500 text-xs mb-10 font-bold uppercase tracking-widest">{gameState==='won' ? 'PERFECT LOGIC' : 'WRONG ANSWER'}</p>
                     <div className="w-full max-w-xs space-y-3">
                         <button onClick={()=>setGameState('explanation')} className="w-full bg-white/10 p-5 rounded-2xl font-bold text-white">VIEW LOGIC</button>
                         <button onClick={()=>setGameState('menu')} className="w-full bg-blue-600 p-5 rounded-2xl font-bold text-white">MAIN MENU</button>
