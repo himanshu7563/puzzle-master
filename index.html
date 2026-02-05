@@ -50,19 +50,18 @@
             Bulb: (p) => <Icon {...p}><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 12 2a4.65 4.65 0 0 0-4.5 9.5c.76.76 1.23 1.52 1.41 2.5"/></Icon>,
             Trash: (p) => <Icon {...p}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></Icon>,
             File: (p) => <Icon {...p}><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></Icon>,
-            List: (p) => <Icon {...p}><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></Icon>,
             Grid: (p) => <Icon {...p}><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></Icon>
         };
 
         const App = () => {
             const [gameState, setGameState] = useState('menu'); 
-            const [timeLeft, setTimeLeft] = useState(600); // 10 Mins Fixed
+            const [timeLeft, setTimeLeft] = useState(420); // 7 Mins
             const [activeCell, setActiveCell] = useState(null);
             const [isAiLoading, setIsAiLoading] = useState(false);
             const [customText, setCustomText] = useState('');
             const [activeCase, setActiveCase] = useState(1);
             const [showHints, setShowHints] = useState(false);
-            const [viewMode, setViewMode] = useState('question'); // 'question' or 'grid'
+            const [viewMode, setViewMode] = useState('question'); 
             
             const [apiKey, setApiKey] = useState('');
             const [library, setLibrary] = useState([]);
@@ -90,9 +89,8 @@
                 if(!apiKey) { alert("Pehle Settings mein API Key dalein!"); setGameState('settings'); return; }
                 setIsAiLoading(true); setGameState('scanning');
                 try {
-                    // NEW STRICT PROMPT
                     const promptText = `You are a strict exam puzzle formatter.
-                    1. 'puzzle_text': Extract the COMPLETE original question text EXACTLY as given. Do NOT summarize. This is what the user reads to solve the puzzle.
+                    1. 'puzzle_text': Extract the COMPLETE original question text EXACTLY as given. Do NOT summarize.
                     2. 'hints': Create 3-4 deductive logical clues (e.g., "If A>B and B>C, A must be > C"). Do NOT copy the full question text here.
                     3. Extract structure for names, fields, options, solution.
                     
@@ -124,9 +122,9 @@
                 const empty = {}; d.names.forEach(n => { empty[n] = {}; d.fields.forEach(f => empty[n][f] = ''); });
                 setUserAnswers({ case1: JSON.parse(JSON.stringify(empty)), case2: JSON.parse(JSON.stringify(empty)) });
                 setLevelData(d); setAiExplanation(d.explanation); 
-                setTimeLeft(300); // 5 Mins Fixed
+                setTimeLeft(420); // 7 Mins
                 setShowHints(false);
-                setViewMode('question'); // Show question first
+                setViewMode('question'); 
                 setGameState('playing');
             };
 
@@ -153,6 +151,24 @@
                 if(ok) setGameState('won'); else alert("Galat hai! Hint le lo.");
             };
 
+            // --- SMART OPTION LOGIC ---
+            const getOptionStatus = (optionValue) => {
+                const currentCaseKey = activeCase === 1 ? 'case1' : 'case2';
+                const currentAnswers = userAnswers[currentCaseKey];
+                const fieldName = activeCell.field;
+
+                // 1. Is this option selected by the CURRENT person?
+                if (currentAnswers[activeCell.name][fieldName] === optionValue) return 'selected';
+
+                // 2. Is this option selected by ANYONE ELSE?
+                const isTaken = levelData.names.some(name => 
+                    name !== activeCell.name && currentAnswers[name][fieldName] === optionValue
+                );
+
+                if (isTaken) return 'taken';
+                return 'available';
+            };
+
             // --- UI SCREENS ---
             if (gameState === 'menu') return (
                 <div className="flex h-[100dvh] flex-col items-center justify-center bg-[#050505] p-6">
@@ -172,7 +188,6 @@
                 const ans = activeCase === 1 ? userAnswers.case1 : userAnswers.case2;
                 return (
                     <div className="flex flex-col h-[100dvh] bg-[#050505] overflow-hidden">
-                        {/* 1. HEADER */}
                         <div className="bg-[#111] border-b border-white/10 px-4 py-3 shrink-0 z-20">
                             <div className="flex justify-between items-center mb-2">
                                 <button onClick={() => setGameState('menu')} className="text-slate-400"><Icons.Back /></button>
@@ -181,18 +196,13 @@
                                 </div>
                                 <button onClick={()=>setShowHints(!showHints)} className={`p-2 rounded-full ${showHints ? 'text-yellow-400 bg-yellow-400/10' : 'text-slate-500 bg-white/5'}`}><Icons.Bulb/></button>
                             </div>
-                            
-                            {/* TAB SWITCHER */}
                             <div className="flex bg-black p-1 rounded-xl border border-white/5">
                                 <button onClick={()=>setViewMode('question')} className={`flex-1 py-3 text-xs font-bold rounded-lg flex items-center justify-center gap-2 ${viewMode==='question' ? 'bg-white text-black' : 'text-slate-500'}`}><Icons.File size={14}/> QUESTION</button>
                                 <button onClick={()=>setViewMode('grid')} className={`flex-1 py-3 text-xs font-bold rounded-lg flex items-center justify-center gap-2 ${viewMode==='grid' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}><Icons.Grid size={14}/> SOLVE GRID</button>
                             </div>
                         </div>
 
-                        {/* 2. MAIN CONTENT */}
                         <div className="flex-1 overflow-y-auto p-4 pb-32">
-                            
-                            {/* HINTS POPUP */}
                             {showHints && (
                                 <div className="mb-4 bg-yellow-900/20 border border-yellow-500/30 rounded-2xl p-4 animate-fade-in">
                                     <h4 className="text-yellow-500 text-[10px] font-black uppercase tracking-widest mb-2">Smart Clues</h4>
@@ -205,13 +215,11 @@
                             )}
 
                             {viewMode === 'question' ? (
-                                /* QUESTION VIEW - RAW TEXT */
                                 <div className="bg-[#151515] border border-white/10 rounded-2xl p-5 shadow-lg">
                                     <h2 className="text-lg font-bold text-white mb-4 leading-tight">{levelData.title}</h2>
                                     <p className="text-sm text-slate-300 leading-7 whitespace-pre-wrap font-medium">{levelData.puzzle_text || "Puzzle text not found. Please try rescanning."}</p>
                                 </div>
                             ) : (
-                                /* GRID VIEW */
                                 <div className="space-y-4">
                                     <div className="flex justify-between items-center px-2">
                                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Logic Grid</span>
@@ -220,7 +228,6 @@
                                             <button onClick={()=>setActiveCase(2)} className={`px-3 py-1 rounded text-[10px] font-bold ${activeCase===2 ? 'bg-blue-600 text-white' : 'bg-white/10 text-slate-500'}`}>CASE 2</button>
                                         </div>
                                     </div>
-                                    
                                     <div className="bg-[#111] border border-white/5 rounded-2xl overflow-hidden">
                                         <div className="overflow-x-auto">
                                             <table className="w-full text-center border-collapse">
@@ -247,7 +254,6 @@
                             )}
                         </div>
 
-                        {/* 3. STICKY BOTTOM BAR */}
                         <div className="fixed bottom-0 left-0 right-0 bg-[#050505]/90 backdrop-blur-md border-t border-white/10 p-4 pb-6 z-30 safe-pb">
                             <div className="flex gap-3 max-w-md mx-auto">
                                 <button onClick={()=>setGameState('menu')} className="bg-[#1a1a1a] h-14 w-14 rounded-2xl flex items-center justify-center text-slate-400 active:scale-95"><Icons.Refresh /></button>
@@ -255,24 +261,52 @@
                             </div>
                         </div>
 
-                        {/* 4. SELECTION DRAWER */}
                         {activeCell && (
                             <div className="fixed inset-0 z-50 flex items-end bg-black/80 backdrop-blur-sm animate-fade-in" onClick={()=>setActiveCell(null)}>
                                 <div className="w-full bg-[#151515] rounded-t-[2rem] p-6 pb-10 border-t border-white/10 animate-slide-up" onClick={e=>e.stopPropagation()}>
                                     <div className="w-12 h-1 bg-white/10 rounded-full mx-auto mb-6"></div>
                                     <div className="flex justify-between items-end mb-6">
                                         <div>
-                                            <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-1">Select {activeCell.field}</p>
+                                            <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-1">Set {activeCell.field}</p>
                                             <h3 className="text-2xl font-bold text-white">{activeCell.name}</h3>
                                         </div>
                                         <button onClick={()=>setActiveCell(null)} className="p-2 bg-white/5 rounded-full text-slate-400"><Icons.Close/></button>
                                     </div>
+                                    
+                                    {/* --- UPDATED DRAWER GRID --- */}
                                     <div className="grid grid-cols-2 gap-3 max-h-[40vh] overflow-y-auto custom-scrollbar">
-                                        {levelData.options[activeCell.field].map(o => (
-                                            <button key={o} onClick={()=>handleSelect(o)} className={`p-4 rounded-xl text-xs font-bold border transition-all ${ans[activeCell.name][activeCell.field]===o ? 'bg-white text-black border-white' : 'bg-black border-white/10 text-slate-400'}`}>
-                                                {o}
-                                            </button>
-                                        ))}
+                                        {levelData.options[activeCell.field].map(opt => {
+                                            const status = getOptionStatus(opt);
+                                            let btnClass = "p-4 rounded-xl text-xs font-bold border transition-all ";
+                                            
+                                            // Conditional Styling
+                                            if (status === 'selected') {
+                                                // Currently Selected by YOU -> White
+                                                btnClass += "bg-white text-black border-white";
+                                            } else if (status === 'taken') {
+                                                // Taken by someone else -> Red, Disabled
+                                                btnClass += "bg-red-900/20 text-red-500 border-red-500/30 opacity-50 cursor-not-allowed";
+                                            } else {
+                                                // Available -> Green
+                                                btnClass += "bg-green-900/10 text-green-400 border-green-500/30 hover:bg-green-900/20";
+                                            }
+
+                                            return (
+                                                <button 
+                                                    key={opt} 
+                                                    onClick={() => status !== 'taken' && handleSelect(opt)}
+                                                    disabled={status === 'taken'}
+                                                    className={btnClass}
+                                                >
+                                                    {opt}
+                                                </button>
+                                            );
+                                        })}
+                                        
+                                        {/* Clear Button */}
+                                        <button onClick={()=>handleSelect('')} className="col-span-2 p-3 rounded-xl text-[10px] font-bold border border-white/10 text-slate-400 bg-white/5 mt-2">
+                                            CLEAR SELECTION
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -281,7 +315,7 @@
                 );
             }
 
-            // SIMPLIFIED SCREENS
+            // SIMPLIFIED SCREENS (Keeping full code structure intact)
             if (gameState === 'settings') return (
                 <div className="flex h-[100dvh] flex-col items-center justify-center bg-[#050505] p-6">
                     <div className="w-full max-w-xs">
@@ -350,4 +384,3 @@
     </script>
 </body>
 </html>
-
