@@ -22,7 +22,6 @@
             -webkit-tap-highlight-color: transparent;
         }
         
-        /* Mobile Safe Area Padding */
         .safe-pb { padding-bottom: env(safe-area-inset-bottom, 20px); }
 
         .scrollbar-hide::-webkit-scrollbar { display: none; }
@@ -197,16 +196,14 @@
                 setUserAnswers(prev => ({ ...prev, [c]: { ...prev[c], [name]: { ...prev[c][name], [field]: '' } } }));
             };
 
-            // --- FIXED CHECK FUNCTION ---
+            // --- FIXED CHECK FUNCTION WITH CRASH PROTECTION ---
             const check = () => {
                 try {
                     const ans = activeCase === 1 ? userAnswers.case1 : userAnswers.case2;
                     let isCorrect = true;
                     let isComplete = true;
 
-                    // Safety check if solution data is missing
                     if (!levelData || !levelData.solution) {
-                        alert("Solution data missing from AI. Cannot verify.");
                         setGameState('lost');
                         return;
                     }
@@ -218,24 +215,20 @@
                             
                             if (!userVal) isComplete = false;
                             
-                            // Loose comparison to avoid case/trim issues
+                            // Safe comparison
                             if (!correctVal || (userVal && userVal.toString().trim().toLowerCase() !== correctVal.toString().trim().toLowerCase())) {
                                 isCorrect = false;
                             }
                         });
                     });
 
-                    // Logic: If incomplete OR wrong -> Lost (Show Solution)
-                    // If complete AND correct -> Won
                     if (!isComplete || !isCorrect) {
                         setGameState('lost'); 
                     } else {
                         setGameState('won');
                     }
                 } catch (error) {
-                    console.error("Check Error:", error);
-                    // Fallback to lost so user can see solution
-                    setGameState('lost');
+                    setGameState('lost'); // Fail-safe to show solution
                 }
             };
 
@@ -459,47 +452,54 @@
                 </div>
             );
 
-            if (gameState === 'explanation') return (
-                <div className="flex h-[100dvh] flex-col bg-[#050505] p-6 safe-pb">
-                    <button onClick={()=>setGameState('menu')} className="mb-6 flex items-center gap-2 text-slate-400 font-bold text-xs"><Icons.Back/> EXIT</button>
-                    <h2 className="text-3xl font-black text-white mb-6">GUIDE</h2>
-                    
-                    <div className="flex-1 overflow-y-auto custom-scrollbar space-y-6">
-                        {/* 1. VISUAL SOLUTION GRID */}
-                        <div className="bg-[#111] border border-green-500/20 rounded-2xl overflow-hidden shadow-lg shadow-green-900/10">
-                            <div className="px-4 py-2 bg-green-900/20 border-b border-green-500/20 flex items-center gap-2">
-                                <Icons.Check size={14} className="text-green-500" />
-                                <span className="text-[10px] font-black text-green-500 uppercase tracking-widest">Correct Solution</span>
-                            </div>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-center border-collapse">
-                                    <thead><tr className="bg-white/5">
-                                        <th className="p-3 text-[10px] font-bold text-slate-500 uppercase sticky left-0 bg-[#111] border-r border-white/5 z-10 text-left pl-4">Name</th>
-                                        {levelData.fields.map(f => <th key={f} className="p-3 text-[10px] font-bold text-slate-500 uppercase min-w-[100px] whitespace-nowrap">{f}</th>)}
-                                    </tr></thead>
-                                    <tbody>{levelData.names.map(n => (
-                                        <tr key={n} className="border-b border-white/5 last:border-0">
-                                            <td className="p-3 text-xs font-bold text-white bg-[#111] sticky left-0 border-r border-white/5 z-10 text-left pl-4">{n}</td>
-                                            {levelData.fields.map(f => (
-                                                <td key={f} className="p-2">
-                                                    <div className="h-10 rounded-lg flex items-center justify-center text-[10px] font-bold border bg-green-900/10 border-green-500/20 text-green-400">
-                                                        {levelData.solution[n][f]}
-                                                    </div>
-                                                </td>
-                                            ))}
-                                        </tr>
-                                    ))}</tbody>
-                                </table>
-                            </div>
-                        </div>
+            // --- FIXED EXPLANATION VIEW WITH SAFETY ---
+            if (gameState === 'explanation') {
+                if (!levelData) return <div className="text-white p-10">Error: No Data</div>; 
 
-                        {/* 2. TEXT EXPLANATION */}
-                        <div className="bg-[#111] border border-white/10 rounded-2xl p-6 text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
-                            {formatText(aiExplanation)}
+                return (
+                    <div className="flex h-[100dvh] flex-col bg-[#050505] p-6 safe-pb">
+                        <button onClick={()=>setGameState('menu')} className="mb-6 flex items-center gap-2 text-slate-400 font-bold text-xs"><Icons.Back/> EXIT</button>
+                        <h2 className="text-3xl font-black text-white mb-6">GUIDE</h2>
+                        
+                        <div className="flex-1 overflow-y-auto custom-scrollbar space-y-6">
+                            {/* 1. VISUAL SOLUTION GRID */}
+                            {levelData.solution && (
+                                <div className="bg-[#111] border border-green-500/20 rounded-2xl overflow-hidden shadow-lg shadow-green-900/10">
+                                    <div className="px-4 py-2 bg-green-900/20 border-b border-green-500/20 flex items-center gap-2">
+                                        <Icons.Check size={14} className="text-green-500" />
+                                        <span className="text-[10px] font-black text-green-500 uppercase tracking-widest">Correct Solution</span>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-center border-collapse">
+                                            <thead><tr className="bg-white/5">
+                                                <th className="p-3 text-[10px] font-bold text-slate-500 uppercase sticky left-0 bg-[#111] border-r border-white/5 z-10 text-left pl-4">Name</th>
+                                                {levelData.fields.map(f => <th key={f} className="p-3 text-[10px] font-bold text-slate-500 uppercase min-w-[100px] whitespace-nowrap">{f}</th>)}
+                                            </tr></thead>
+                                            <tbody>{levelData.names.map(n => (
+                                                <tr key={n} className="border-b border-white/5 last:border-0">
+                                                    <td className="p-3 text-xs font-bold text-white bg-[#111] sticky left-0 border-r border-white/5 z-10 text-left pl-4">{n}</td>
+                                                    {levelData.fields.map(f => (
+                                                        <td key={f} className="p-2">
+                                                            <div className="h-10 rounded-lg flex items-center justify-center text-[10px] font-bold border bg-green-900/10 border-green-500/20 text-green-400">
+                                                                {levelData.solution[n]?.[f] || '-'}
+                                                            </div>
+                                                        </td>
+                                                    ))}
+                                                </tr>
+                                            ))}</tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* 2. TEXT EXPLANATION */}
+                            <div className="bg-[#111] border border-white/10 rounded-2xl p-6 text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
+                                {aiExplanation ? formatText(aiExplanation) : "No textual explanation provided."}
+                            </div>
                         </div>
                     </div>
-                </div>
-            );
+                );
+            }
 
             return null;
         };
