@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Logic.AI - Exam Mode</title>
+    <title>Logic.AI - Pro Exam Mode</title>
     
     <!-- 1. External Libraries -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -22,9 +22,7 @@
             -webkit-tap-highlight-color: transparent;
         }
         
-        /* Mobile Safe Area Padding */
-        .safe-top { padding-top: env(safe-area-inset-top, 20px); }
-        .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 20px); }
+        .safe-pb { padding-bottom: env(safe-area-inset-bottom, 20px); }
 
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
@@ -50,17 +48,21 @@
             Check: (p) => <Icon {...p}><path d="M20 6 9 17l-5-5"/></Icon>,
             Close: (p) => <Icon {...p}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></Icon>,
             Bulb: (p) => <Icon {...p}><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 12 2a4.65 4.65 0 0 0-4.5 9.5c.76.76 1.23 1.52 1.41 2.5"/></Icon>,
-            Trash: (p) => <Icon {...p}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></Icon>
+            Trash: (p) => <Icon {...p}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></Icon>,
+            File: (p) => <Icon {...p}><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></Icon>,
+            List: (p) => <Icon {...p}><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></Icon>,
+            Grid: (p) => <Icon {...p}><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></Icon>
         };
 
         const App = () => {
             const [gameState, setGameState] = useState('menu'); 
-            const [timeLeft, setTimeLeft] = useState(300); // Fixed 5 mins
+            const [timeLeft, setTimeLeft] = useState(300); // 5 Mins Fixed
             const [activeCell, setActiveCell] = useState(null);
             const [isAiLoading, setIsAiLoading] = useState(false);
             const [customText, setCustomText] = useState('');
             const [activeCase, setActiveCase] = useState(1);
             const [showHints, setShowHints] = useState(false);
+            const [viewMode, setViewMode] = useState('question'); // 'question' or 'grid'
             
             const [apiKey, setApiKey] = useState('');
             const [library, setLibrary] = useState([]);
@@ -88,21 +90,24 @@
                 if(!apiKey) { alert("Pehle Settings mein API Key dalein!"); setGameState('settings'); return; }
                 setIsAiLoading(true); setGameState('scanning');
                 try {
-                    // Updated Prompt to prevent Spoilers in Hints
+                    // NEW PROMPT: Strictly separates Question Text from Hints
                     const promptText = `Analyze this reasoning puzzle. 
-                    Extract the raw puzzle text/clues EXACTLY as they appear. Do NOT solve the puzzle in the 'hints' section. 
-                    The 'hints' array must only contain the question statements split sentence by sentence.
+                    1. Extract the FULL RAW QUESTION TEXT (exactly as written). Put this in 'puzzle_text'.
+                    2. Generate 3-4 SMART HINTS (deductive steps, NOT the full solution). Put these in 'hints'.
+                    3. Extract solution and structure.
+                    
                     Return strictly JSON format:
                     {
                         "title": "Short Title",
+                        "puzzle_text": "Full original question text goes here...",
                         "names": ["Name1", "Name2"],
                         "fields": ["City", "Bank"],
                         "options": {"City": ["X","Y"], "Bank": ["A", "B"]}, 
-                        "hints": ["Statement 1", "Statement 2"], 
+                        "hints": ["Hint: Since A is not X, try...", "Hint: Look at statement 2..."], 
                         "solution": {"Name1": {"City": "X", "Bank": "A"}}, 
-                        "explanation": "Detailed step-by-step solution guide"
+                        "explanation": "Detailed guide"
                     }
-                    Important: Ensure options match the fields logic.`;
+                    Important: 'hints' array must NOT contain the question text. It should contain logic clues only.`;
 
                     const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
                         method: 'POST',
@@ -120,8 +125,9 @@
                 const empty = {}; d.names.forEach(n => { empty[n] = {}; d.fields.forEach(f => empty[n][f] = ''); });
                 setUserAnswers({ case1: JSON.parse(JSON.stringify(empty)), case2: JSON.parse(JSON.stringify(empty)) });
                 setLevelData(d); setAiExplanation(d.explanation); 
-                setTimeLeft(300); // Fixed 5 Minutes
-                setShowHints(false); // Hints hidden by default
+                setTimeLeft(300); // 5 Mins Fixed
+                setShowHints(false);
+                setViewMode('question'); // Show question first
                 setGameState('playing');
             };
 
@@ -145,14 +151,14 @@
                 levelData.names.forEach(n => {
                     levelData.fields.forEach(f => { if(ans[n][f] !== levelData.solution[n][f]) ok = false; });
                 });
-                if(ok) setGameState('won'); else alert("Galat hai! Dobara check karein.");
+                if(ok) setGameState('won'); else alert("Galat hai! Hint le lo.");
             };
 
             // --- UI SCREENS ---
             if (gameState === 'menu') return (
-                <div className="flex h-[100dvh] flex-col items-center justify-center bg-[#050505] p-6 safe-top safe-bottom">
+                <div className="flex h-[100dvh] flex-col items-center justify-center bg-[#050505] p-6">
                     <button onClick={() => setGameState('settings')} className="fixed top-6 right-6 p-3 bg-white/10 rounded-full text-slate-400"><Icons.Settings /></button>
-                    <h1 className="text-5xl font-black italic tracking-tighter mb-2 text-white">LOGIC.AI</h1>
+                    <h1 className="text-6xl font-black italic tracking-tighter mb-2 text-white">LOGIC.AI</h1>
                     <p className="text-slate-500 text-xs font-bold uppercase tracking-[0.3em] mb-12">Exam Prep Mode</p>
                     <div className="w-full max-w-xs space-y-3">
                         <button onClick={() => setGameState('input_text')} className="w-full bg-white text-black p-5 rounded-2xl font-bold active:scale-95 transition-transform shadow-lg">PASTE QUESTION</button>
@@ -166,86 +172,98 @@
             if (gameState === 'playing' && levelData) {
                 const ans = activeCase === 1 ? userAnswers.case1 : userAnswers.case2;
                 return (
-                    <div className="flex flex-col h-[100dvh] bg-[#050505] overflow-hidden safe-top safe-bottom">
-                        {/* HEADER */}
-                        <div className="bg-[#111] border-b border-white/10 px-4 py-4 shrink-0 z-20 space-y-4">
-                            <div className="flex justify-between items-center">
-                                <button onClick={() => setGameState('menu')} className="text-slate-400 flex items-center gap-2 text-xs font-bold"><Icons.Back size={16}/> EXIT</button>
+                    <div className="flex flex-col h-[100dvh] bg-[#050505] overflow-hidden">
+                        {/* 1. COMPACT HEADER */}
+                        <div className="bg-[#111] border-b border-white/10 px-4 py-3 shrink-0 z-20">
+                            <div className="flex justify-between items-center mb-2">
+                                <button onClick={() => setGameState('menu')} className="text-slate-400"><Icons.Back /></button>
                                 <div className={`font-mono text-xl font-bold tracking-wider ${timeLeft < 60 ? 'text-red-500 animate-pulse' : 'text-blue-400'}`}>
                                     {Math.floor(timeLeft/60)}:{(timeLeft%60).toString().padStart(2,'0')}
                                 </div>
+                                <button onClick={()=>setShowHints(!showHints)} className={`p-2 rounded-full ${showHints ? 'text-yellow-400 bg-yellow-400/10' : 'text-slate-500 bg-white/5'}`}><Icons.Bulb/></button>
                             </div>
                             
-                            <div className="flex items-center justify-between gap-3">
-                                <h2 className="text-sm font-bold text-white truncate flex-1">{levelData.title}</h2>
-                                <div className="flex bg-black p-1 rounded-lg">
-                                    <button onClick={()=>setActiveCase(1)} className={`px-4 py-1.5 text-[10px] font-bold rounded-md transition-colors ${activeCase===1 ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>CASE 1</button>
-                                    <button onClick={()=>setActiveCase(2)} className={`px-4 py-1.5 text-[10px] font-bold rounded-md transition-colors ${activeCase===2 ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>CASE 2</button>
-                                </div>
+                            {/* TAB SWITCHER */}
+                            <div className="flex bg-black p-1 rounded-xl border border-white/5">
+                                <button onClick={()=>setViewMode('question')} className={`flex-1 py-3 text-xs font-bold rounded-lg flex items-center justify-center gap-2 ${viewMode==='question' ? 'bg-white text-black' : 'text-slate-500'}`}><Icons.File size={14}/> QUESTION</button>
+                                <button onClick={()=>setViewMode('grid')} className={`flex-1 py-3 text-xs font-bold rounded-lg flex items-center justify-center gap-2 ${viewMode==='grid' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}><Icons.Grid size={14}/> SOLVE GRID</button>
                             </div>
                         </div>
 
-                        {/* CONTENT AREA */}
-                        <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-32">
-                            {/* Hints Toggle */}
-                            <div className="flex justify-end">
-                                <button onClick={() => setShowHints(!showHints)} className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold border transition-all ${showHints ? 'bg-yellow-500/10 border-yellow-500 text-yellow-500' : 'bg-[#1a1a1a] border-white/10 text-slate-400'}`}>
-                                    <Icons.Bulb size={16} /> {showHints ? "HIDE HINTS" : "SHOW HINTS"}
-                                </button>
-                            </div>
-
-                            {/* Hints Box (Conditional) */}
+                        {/* 2. MAIN CONTENT */}
+                        <div className="flex-1 overflow-y-auto p-4 pb-32">
+                            
+                            {/* HINTS POPUP (Overlay) */}
                             {showHints && (
-                                <div className="bg-[#151515] border border-white/10 rounded-2xl p-4 animate-slide-up">
-                                    <div className="space-y-3">
+                                <div className="mb-4 bg-yellow-900/20 border border-yellow-500/30 rounded-2xl p-4 animate-fade-in">
+                                    <h4 className="text-yellow-500 text-[10px] font-black uppercase tracking-widest mb-2">Smart Clues</h4>
+                                    <div className="space-y-2">
                                         {levelData.hints.map((h, i) => (
-                                            <p key={i} className="text-xs text-slate-300 leading-relaxed pl-3 border-l-2 border-yellow-500/30">{h}</p>
+                                            <p key={i} className="text-xs text-yellow-100/80 leading-relaxed border-l-2 border-yellow-500 pl-3">{h}</p>
                                         ))}
                                     </div>
                                 </div>
                             )}
 
-                            {/* Grid Table */}
-                            <div className="bg-[#111] border border-white/5 rounded-2xl overflow-hidden shadow-lg">
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-center border-collapse">
-                                        <thead><tr className="bg-white/5">
-                                            <th className="p-3 text-[10px] font-bold text-slate-500 uppercase sticky left-0 bg-[#111] border-r border-white/5 z-10 text-left pl-4">Name</th>
-                                            {levelData.fields.map(f => <th key={f} className="p-3 text-[10px] font-bold text-slate-500 uppercase min-w-[100px] whitespace-nowrap">{f}</th>)}
-                                        </tr></thead>
-                                        <tbody>{levelData.names.map(n => (
-                                            <tr key={n} className="border-b border-white/5 last:border-0">
-                                                <td className="p-3 text-xs font-bold text-white bg-[#111] sticky left-0 border-r border-white/5 z-10 text-left pl-4">{n}</td>
-                                                {levelData.fields.map(f => (
-                                                    <td key={f} onClick={()=>setActiveCell({name:n,field:f})} className="p-2">
-                                                        <div className={`h-10 rounded-lg flex items-center justify-center text-[10px] font-bold border transition-colors ${ans[n]?.[f] ? 'bg-blue-900/20 border-blue-500/50 text-blue-300' : 'bg-black border-white/5 text-slate-700'}`}>
-                                                            {ans[n]?.[f] || 'TAP'}
-                                                        </div>
-                                                    </td>
-                                                ))}
-                                            </tr>
-                                        ))}</tbody>
-                                    </table>
+                            {viewMode === 'question' ? (
+                                /* QUESTION VIEW */
+                                <div className="bg-[#151515] border border-white/10 rounded-2xl p-5 shadow-lg">
+                                    <h2 className="text-lg font-bold text-white mb-4 leading-tight">{levelData.title}</h2>
+                                    <p className="text-sm text-slate-300 leading-7 whitespace-pre-wrap font-medium">{levelData.puzzle_text || "No text available. Check image scan."}</p>
                                 </div>
-                            </div>
+                            ) : (
+                                /* GRID VIEW */
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-center px-2">
+                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Logic Grid</span>
+                                        <div className="flex gap-2">
+                                            <button onClick={()=>setActiveCase(1)} className={`px-3 py-1 rounded text-[10px] font-bold ${activeCase===1 ? 'bg-blue-600 text-white' : 'bg-white/10 text-slate-500'}`}>CASE 1</button>
+                                            <button onClick={()=>setActiveCase(2)} className={`px-3 py-1 rounded text-[10px] font-bold ${activeCase===2 ? 'bg-blue-600 text-white' : 'bg-white/10 text-slate-500'}`}>CASE 2</button>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="bg-[#111] border border-white/5 rounded-2xl overflow-hidden">
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-center border-collapse">
+                                                <thead><tr className="bg-white/5">
+                                                    <th className="p-3 text-[10px] font-bold text-slate-500 uppercase sticky left-0 bg-[#111] border-r border-white/5 z-10 text-left pl-4">Name</th>
+                                                    {levelData.fields.map(f => <th key={f} className="p-3 text-[10px] font-bold text-slate-500 uppercase min-w-[100px] whitespace-nowrap">{f}</th>)}
+                                                </tr></thead>
+                                                <tbody>{levelData.names.map(n => (
+                                                    <tr key={n} className="border-b border-white/5 last:border-0">
+                                                        <td className="p-3 text-xs font-bold text-white bg-[#111] sticky left-0 border-r border-white/5 z-10 text-left pl-4">{n}</td>
+                                                        {levelData.fields.map(f => (
+                                                            <td key={f} onClick={()=>setActiveCell({name:n,field:f})} className="p-2">
+                                                                <div className={`h-10 rounded-lg flex items-center justify-center text-[10px] font-bold border transition-colors ${ans[n]?.[f] ? 'bg-blue-900/30 border-blue-500/50 text-blue-300' : 'bg-black border-white/5 text-slate-700'}`}>
+                                                                    {ans[n]?.[f] || 'TAP'}
+                                                                </div>
+                                                            </td>
+                                                        ))}
+                                                    </tr>
+                                                ))}</tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
-                        {/* BOTTOM BAR */}
-                        <div className="fixed bottom-0 left-0 right-0 bg-[#050505]/95 backdrop-blur-xl border-t border-white/10 p-4 pb-8 z-30 safe-bottom">
+                        {/* 3. STICKY BOTTOM BAR */}
+                        <div className="fixed bottom-0 left-0 right-0 bg-[#050505]/90 backdrop-blur-md border-t border-white/10 p-4 pb-6 z-30 safe-pb">
                             <div className="flex gap-3 max-w-md mx-auto">
                                 <button onClick={()=>setGameState('menu')} className="bg-[#1a1a1a] h-14 w-14 rounded-2xl flex items-center justify-center text-slate-400 active:scale-95"><Icons.Refresh /></button>
                                 <button onClick={check} className="flex-1 bg-white text-black h-14 rounded-2xl font-black text-lg active:scale-95 shadow-xl flex items-center justify-center gap-2">CHECK</button>
                             </div>
                         </div>
 
-                        {/* SELECTION DRAWER */}
+                        {/* 4. SELECTION DRAWER */}
                         {activeCell && (
                             <div className="fixed inset-0 z-50 flex items-end bg-black/80 backdrop-blur-sm animate-fade-in" onClick={()=>setActiveCell(null)}>
-                                <div className="w-full bg-[#151515] rounded-t-[2rem] p-6 pb-12 border-t border-white/10 animate-slide-up" onClick={e=>e.stopPropagation()}>
+                                <div className="w-full bg-[#151515] rounded-t-[2rem] p-6 pb-10 border-t border-white/10 animate-slide-up" onClick={e=>e.stopPropagation()}>
                                     <div className="w-12 h-1 bg-white/10 rounded-full mx-auto mb-6"></div>
                                     <div className="flex justify-between items-end mb-6">
                                         <div>
-                                            <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-1">Set {activeCell.field}</p>
+                                            <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-1">Select {activeCell.field}</p>
                                             <h3 className="text-2xl font-bold text-white">{activeCell.name}</h3>
                                         </div>
                                         <button onClick={()=>setActiveCell(null)} className="p-2 bg-white/5 rounded-full text-slate-400"><Icons.Close/></button>
@@ -264,7 +282,7 @@
                 );
             }
 
-            // SETTINGS, LIBRARY, INPUT SCREENS (Simplifications for brevity but fully styled)
+            // SIMPLIFIED SCREENS
             if (gameState === 'settings') return (
                 <div className="flex h-[100dvh] flex-col items-center justify-center bg-[#050505] p-6">
                     <div className="w-full max-w-xs">
@@ -276,23 +294,8 @@
                 </div>
             );
 
-            if (gameState === 'library') return (
-                <div className="flex h-[100dvh] flex-col bg-[#050505] p-6 safe-top safe-bottom">
-                    <button onClick={()=>setGameState('menu')} className="mb-6 flex items-center gap-2 text-slate-400 font-bold text-xs"><Icons.Back/> BACK</button>
-                    <h2 className="text-3xl font-black text-white mb-6">VAULT</h2>
-                    <div className="flex-1 overflow-y-auto space-y-3 pb-10 custom-scrollbar">
-                        {library.slice().reverse().map(l => (
-                            <div key={l.id} onClick={() => startLevel(l.data)} className="bg-[#111] border border-white/10 p-5 rounded-2xl active:scale-95 transition-transform flex justify-between items-center">
-                                <div><span className="text-[10px] text-blue-500 font-bold uppercase">Level {l.level}</span><h3 className="font-bold text-white text-sm line-clamp-1">{l.title}</h3></div>
-                                <button onClick={e => {e.stopPropagation(); if(confirm("Delete?")) {const f=library.filter(x=>x.id!==l.id); setLibrary(f); localStorage.setItem('puzzleVault',JSON.stringify(f));}}} className="p-2 text-slate-600 hover:text-red-500"><Icons.Trash/></button>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            );
-
             if (gameState === 'input_text') return (
-                <div className="flex h-[100dvh] flex-col bg-[#050505] p-6 safe-top safe-bottom">
+                <div className="flex h-[100dvh] flex-col bg-[#050505] p-6">
                     <button onClick={()=>setGameState('menu')} className="mb-6 flex items-center gap-2 text-slate-400 font-bold text-xs"><Icons.Back/> BACK</button>
                     <h2 className="text-3xl font-black text-white mb-4">PASTE</h2>
                     <textarea value={customText} onChange={e=>setCustomText(e.target.value)} className="flex-1 bg-[#111] border border-white/10 rounded-2xl p-5 text-sm text-white focus:border-blue-500 outline-none resize-none mb-4" placeholder="Paste text here..." />
@@ -307,6 +310,21 @@
                 </div>
             );
 
+            if (gameState === 'library') return (
+                <div className="flex h-[100dvh] flex-col bg-[#050505] p-6 safe-pb">
+                    <button onClick={()=>setGameState('menu')} className="mb-6 flex items-center gap-2 text-slate-400 font-bold text-xs"><Icons.Back/> BACK</button>
+                    <h2 className="text-3xl font-black text-white mb-6">VAULT</h2>
+                    <div className="flex-1 overflow-y-auto space-y-3 pb-10 custom-scrollbar">
+                        {library.slice().reverse().map(l => (
+                            <div key={l.id} onClick={() => startLevel(l.data)} className="bg-[#111] border border-white/10 p-5 rounded-2xl active:scale-95 transition-transform flex justify-between items-center">
+                                <div><span className="text-[10px] text-blue-500 font-bold uppercase">LVL {l.level}</span><h3 className="font-bold text-white text-sm line-clamp-1">{l.title}</h3></div>
+                                <button onClick={e => {e.stopPropagation(); if(confirm("Delete?")) {const f=library.filter(x=>x.id!==l.id); setLibrary(f); localStorage.setItem('puzzleVault',JSON.stringify(f));}}} className="p-2 text-slate-600 hover:text-red-500"><Icons.Trash/></button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+
             if (gameState === 'won' || gameState === 'lost') return (
                 <div className="flex h-[100dvh] flex-col items-center justify-center bg-[#050505] p-10 text-center">
                     <h2 className={`text-6xl font-black italic mb-4 ${gameState==='won'?'text-white':'text-red-500'}`}>{gameState==='won'?'SOLVED!':'FAILED!'}</h2>
@@ -318,7 +336,7 @@
             );
 
             if (gameState === 'explanation') return (
-                <div className="flex h-[100dvh] flex-col bg-[#050505] p-6 safe-top safe-bottom">
+                <div className="flex h-[100dvh] flex-col bg-[#050505] p-6 safe-pb">
                     <button onClick={()=>setGameState('menu')} className="mb-6 flex items-center gap-2 text-slate-400 font-bold text-xs"><Icons.Back/> EXIT</button>
                     <h2 className="text-3xl font-black text-white mb-6">GUIDE</h2>
                     <div className="flex-1 bg-[#111] border border-white/10 rounded-2xl p-6 overflow-y-auto custom-scrollbar text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">{aiExplanation}</div>
