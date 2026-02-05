@@ -71,10 +71,8 @@
             const [library, setLibrary] = useState([]);
             const [levelData, setLevelData] = useState(null);
             
-            // Answers: Stores confirmed selections
+            // Answers & Rejections
             const [userAnswers, setUserAnswers] = useState({ case1: {}, case2: {} });
-            
-            // Rejections: Stores options marked as "Impossible" (Red)
             const [userRejections, setUserRejections] = useState({ case1: {}, case2: {} });
             
             const [aiExplanation, setAiExplanation] = useState('');
@@ -113,7 +111,7 @@
                         "options": {"City": ["X","Y"], "Bank": ["A", "B"]}, 
                         "hints": ["Deduction 1", "Deduction 2"], 
                         "solution": {"Name1": {"City": "X", "Bank": "A"}}, 
-                        "explanation": "Solution guide"
+                        "explanation": "Detailed step-by-step solution guide"
                     }`;
 
                     const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
@@ -136,7 +134,7 @@
                     emptyRej[n] = {};
                     d.fields.forEach(f => {
                         emptyAns[n][f] = '';
-                        emptyRej[n][f] = []; // Array of rejected strings
+                        emptyRej[n][f] = [];
                     }); 
                 });
                 
@@ -158,43 +156,29 @@
 
             if(timeLeft === 0 && gameState === 'playing') setGameState('lost');
 
-            // --- HANDLING SELECTION & REJECTION ---
             const handleInteraction = (val) => {
                 const c = activeCase === 1 ? 'case1' : 'case2';
                 const { name, field } = activeCell;
 
                 if (eliminationMode) {
-                    // Toggle Rejection
                     setUserRejections(prev => {
                         const currentRejections = prev[c][name][field] || [];
                         const newRejections = currentRejections.includes(val) 
-                            ? currentRejections.filter(item => item !== val) // Un-reject
-                            : [...currentRejections, val]; // Reject
+                            ? currentRejections.filter(item => item !== val) 
+                            : [...currentRejections, val]; 
                         
-                        // If we reject something that was selected, unselect it
                         if (userAnswers[c][name][field] === val) {
                             setUserAnswers(ans => ({ ...ans, [c]: { ...ans[c], [name]: { ...ans[c][name], [field]: '' } } }));
                         }
-
                         return { ...prev, [c]: { ...prev[c], [name]: { ...prev[c][name], [field]: newRejections } } };
                     });
                 } else {
-                    // Assign Value (Green)
-                    setUserAnswers(prev => ({ 
-                        ...prev, 
-                        [c]: { 
-                            ...prev[c], 
-                            [name]: { ...prev[c][name], [field]: val } 
-                        } 
-                    }));
-                    
-                    // If assigning, remove from rejected list if present
+                    setUserAnswers(prev => ({ ...prev, [c]: { ...prev[c], [name]: { ...prev[c][name], [field]: val } } }));
                     setUserRejections(prev => ({
                         ...prev,
                         [c]: { ...prev[c], [name]: { ...prev[c][name], [field]: prev[c][name][field].filter(item => item !== val) } }
                     }));
-                    
-                    setActiveCell(null); // Close drawer on selection
+                    setActiveCell(null);
                 }
             };
 
@@ -217,10 +201,25 @@
                 });
 
                 if (incomplete || !ok) {
-                    setGameState('lost'); // Direct Defeat Screen
+                    setGameState('lost'); 
                 } else {
-                    setGameState('won'); // Direct Victory Screen
+                    setGameState('won');
                 }
+            };
+
+            const getOptionStatus = (optionValue) => {
+                const currentCaseKey = activeCase === 1 ? 'case1' : 'case2';
+                const currentAnswers = userAnswers[currentCaseKey];
+                const fieldName = activeCell.field;
+
+                if (currentAnswers[activeCell.name][fieldName] === optionValue) return 'selected';
+
+                const isTaken = levelData.names.some(name => 
+                    name !== activeCell.name && currentAnswers[name][fieldName] === optionValue
+                );
+
+                if (isTaken) return 'taken';
+                return 'available';
             };
 
             // --- UI SCREENS ---
@@ -334,25 +333,32 @@
                                     
                                     <div className="grid grid-cols-2 gap-3 max-h-[40vh] overflow-y-auto custom-scrollbar">
                                         {levelData.options[activeCell.field].map(opt => {
-                                            const c = activeCase === 1 ? 'case1' : 'case2';
-                                            const isSelected = userAnswers[c][activeCell.name][activeCell.field] === opt;
-                                            const isRejected = userRejections[c][activeCell.name][activeCell.field]?.includes(opt);
+                                            const status = getOptionStatus(opt);
+                                            let btnClass = "p-4 rounded-xl text-xs font-bold border transition-all ";
                                             
-                                            // Determine Style
-                                            let btnStyle = "p-4 rounded-xl text-xs font-bold border transition-all ";
-                                            if (isRejected) {
-                                                btnStyle += "bg-red-900/10 border-red-500/30 text-red-500 opacity-60 line-through decoration-2";
-                                            } else if (isSelected) {
-                                                btnStyle += "bg-white text-black border-white shadow-[0_0_15px_rgba(255,255,255,0.3)]";
+                                            // Conditional Styling
+                                            if (status === 'selected') {
+                                                btnClass += "bg-white text-black border-white";
+                                            } else if (status === 'taken') {
+                                                btnClass += "bg-red-900/20 text-red-500 border-red-500/30 opacity-50 cursor-not-allowed";
                                             } else {
-                                                btnStyle += "bg-[#1a1a1a] border-white/5 text-slate-400";
+                                                // Check for manual rejection
+                                                const c = activeCase === 1 ? 'case1' : 'case2';
+                                                const isRejected = userRejections[c][activeCell.name][activeCell.field]?.includes(opt);
+                                                
+                                                if(isRejected) {
+                                                    btnClass += "bg-red-900/10 border-red-500/30 text-red-500 opacity-60 line-through decoration-2";
+                                                } else {
+                                                    btnClass += "bg-[#1a1a1a] border-white/5 text-slate-400 hover:bg-white/5";
+                                                }
                                             }
 
                                             return (
                                                 <button 
                                                     key={opt} 
-                                                    onClick={() => handleInteraction(opt)}
-                                                    className={btnStyle}
+                                                    onClick={() => status !== 'taken' && handleInteraction(opt)}
+                                                    disabled={status === 'taken'}
+                                                    className={btnClass}
                                                 >
                                                     {opt}
                                                 </button>
@@ -425,7 +431,41 @@
                 <div className="flex h-[100dvh] flex-col bg-[#050505] p-6 safe-pb">
                     <button onClick={()=>setGameState('menu')} className="mb-6 flex items-center gap-2 text-slate-400 font-bold text-xs"><Icons.Back/> EXIT</button>
                     <h2 className="text-3xl font-black text-white mb-6">GUIDE</h2>
-                    <div className="flex-1 bg-[#111] border border-white/10 rounded-2xl p-6 overflow-y-auto custom-scrollbar text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">{aiExplanation}</div>
+                    
+                    <div className="flex-1 overflow-y-auto custom-scrollbar space-y-6">
+                        {/* 1. VISUAL SOLUTION GRID */}
+                        <div className="bg-[#111] border border-green-500/20 rounded-2xl overflow-hidden shadow-lg shadow-green-900/10">
+                            <div className="px-4 py-2 bg-green-900/20 border-b border-green-500/20 flex items-center gap-2">
+                                <Icons.Check size={14} className="text-green-500" />
+                                <span className="text-[10px] font-black text-green-500 uppercase tracking-widest">Correct Solution</span>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-center border-collapse">
+                                    <thead><tr className="bg-white/5">
+                                        <th className="p-3 text-[10px] font-bold text-slate-500 uppercase sticky left-0 bg-[#111] border-r border-white/5 z-10 text-left pl-4">Name</th>
+                                        {levelData.fields.map(f => <th key={f} className="p-3 text-[10px] font-bold text-slate-500 uppercase min-w-[100px] whitespace-nowrap">{f}</th>)}
+                                    </tr></thead>
+                                    <tbody>{levelData.names.map(n => (
+                                        <tr key={n} className="border-b border-white/5 last:border-0">
+                                            <td className="p-3 text-xs font-bold text-white bg-[#111] sticky left-0 border-r border-white/5 z-10 text-left pl-4">{n}</td>
+                                            {levelData.fields.map(f => (
+                                                <td key={f} className="p-2">
+                                                    <div className="h-10 rounded-lg flex items-center justify-center text-[10px] font-bold border bg-green-900/10 border-green-500/20 text-green-400">
+                                                        {levelData.solution[n][f]}
+                                                    </div>
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))}</tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        {/* 2. TEXT EXPLANATION */}
+                        <div className="bg-[#111] border border-white/10 rounded-2xl p-6 text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
+                            {aiExplanation}
+                        </div>
+                    </div>
                 </div>
             );
 
